@@ -157,7 +157,7 @@ def wrapped_job_task(
         job_task_id = _job_task_id, 
         job_task_description = _job_task_description,  
         source_reference = _source_reference,
-
+        client = _client,
         ts_start = str(datetime.datetime.now()))
 
     # Perform Task

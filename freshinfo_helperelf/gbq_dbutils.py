@@ -80,7 +80,7 @@ def upload_df_to_gbq_table(
         # Create Job to load table from dataframe 
         job = client.load_table_from_dataframe(
             data_frame, 
-            destination = "{}.{}.{}".format(table_reference.project, table_reference.dataset_id, table_reference.table_id), 
+            destination = "{}.{}.{}".format(client.project, dataset_id, table_id), 
             job_config = job_config
         )
 
