@@ -2,12 +2,33 @@ import datetime as datetime
 import os 
 import json
 import pprint 
+import sys 
 
 import pandas as pd 
 from google.cloud import bigquery
 
 from freshinfo_helperelf import dbutils
 from freshinfo_helperelf.gbq_dbutils import upload_df_to_gbq_table
+
+def generate_system_error_message(error = None):
+    if error is not None:
+        if sys.exc_info()[0] is not None:
+            system_error_message = "The system error message was: {} - {}".format(sys.exc_info()[0].__name__, str(error))
+        else:
+            system_error_message = "The system error message was: {}".format(str(error))
+    else:
+        system_error_message = "No system error message is available"
+    return system_error_message
+
+class add_job_task_record_error(Exception):
+    def __init__(self, error):
+        self.error = error 
+        self.result_message = "The job task could not be added. {}.".format(generate_system_error_message(error))
+
+class update_job_task_record_error(Exception):
+    def __init__(self, error):
+        self.error = error 
+        self.result_message = "The job task could not be updated. {}.".format(generate_system_error_message(error))
 
 def add_job_task_record(
     job_id, 
@@ -18,42 +39,49 @@ def add_job_task_record(
     source_reference = None, 
     json_reference = None):
 
-    job_task_results = {
-        # Fields Populated when creating task 
-        'job_id': job_id, 
-        'job_task_id': job_task_id,
-        'job_task_description': job_task_description,
-        'ts_start': ts_start,
-        'etl_task_status_id': dbutils.Etl.TaskStatus.start.value,
+    try:
+        job_task_results = {
+            # Fields Populated when creating task 
+            'job_id': job_id, 
+            'job_task_id': job_task_id,
+            'job_task_description': job_task_description,
+            'ts_start': ts_start,
+            'etl_task_status_id': dbutils.Etl.TaskStatus.start.value,
 
-        # References
-        'source_reference': source_reference,
-        'json_reference': json_reference
-    }
+            # References
+            'source_reference': source_reference,
+            'json_reference': json_reference
+        }
 
-    SCHEMA = [
-        # Fields Populated when creating task 
-        bigquery.SchemaField("job_id", "INT64", mode = "REQUIRED"),
-        bigquery.SchemaField("job_task_id", "INT64", mode = "REQUIRED"),
-        bigquery.SchemaField("job_task_description", "STRING", mode = "REQUIRED"),
-        bigquery.SchemaField("ts_start", "STRING", mode = "NULLABLE"),
-        bigquery.SchemaField("etl_task_status_id", "INT64", mode = "NULLABLE"),
+        SCHEMA = [
+            # Fields Populated when creating task 
+            bigquery.SchemaField("job_id", "INT64", mode = "REQUIRED"),
+            bigquery.SchemaField("job_task_id", "INT64", mode = "REQUIRED"),
+            bigquery.SchemaField("job_task_description", "STRING", mode = "REQUIRED"),
+            bigquery.SchemaField("ts_start", "STRING", mode = "NULLABLE"),
+            bigquery.SchemaField("etl_task_status_id", "INT64", mode = "NULLABLE"),
 
-        # References
-        bigquery.SchemaField("source_reference", "STRING", mode = "NULLABLE"),
-        bigquery.SchemaField("json_reference", "STRING", mode = "NULLABLE")
-    ]
+            # References
+            bigquery.SchemaField("source_reference", "STRING", mode = "NULLABLE"),
+            bigquery.SchemaField("json_reference", "STRING", mode = "NULLABLE")
+        ]
 
-    # Convert to dataframe and upload to table
-    job_task_results_data_frame = pd.DataFrame(pd.Series(job_task_results)).transpose()
-    results = upload_df_to_gbq_table(
-        job_task_results_data_frame, 
-        client, 
-        dataset_id = 'etl',
-        table_id = 'job_task_record',
-        schema = SCHEMA)
+        # Convert to dataframe and upload to table
+        job_task_results_data_frame = pd.DataFrame(pd.Series(job_task_results)).transpose()
+        results = upload_df_to_gbq_table(
+            job_task_results_data_frame, 
+            client, 
+            dataset_id = 'etl',
+            table_id = 'job_task_record',
+            schema = SCHEMA)
 
-    # pprint.pprint(results.__dict__)
+        if results.result_code != 0:
+            raise add_job_task_record_error(error = results.error)
+    
+    except add_job_task_record_error as e:
+        with open("{}_{}_add_job_task_record_error.txt".format(job_id, job_task_id), 'w') as file:
+            file.write(e.result_message) 
+
 
     return job_task_results
 
@@ -68,75 +96,83 @@ def update_job_task_record(
     client,
     json_reference = None):
 
-    job_task_results = {
-        # ID
-        'job_id': job_id, 
-        'job_task_id': job_task_id,
+    try:
+        job_task_results = {
+            # ID
+            'job_id': job_id, 
+            'job_task_id': job_task_id,
 
-        # Update Results
-        'ts_end': str(ts_end),
-        'result_code': result_code,
-        'result_message': result_message,
-        'affected_rows': affected_rows,
-        'etl_task_status_id': dbutils.Etl.TaskStatus.start.value,
+            # Update Results
+            'ts_end': str(ts_end),
+            'result_code': result_code,
+            'result_message': result_message,
+            'affected_rows': affected_rows,
+            'etl_task_status_id': dbutils.Etl.TaskStatus.start.value,
 
-        # References
-        'json_reference': json.dumps(json_reference)
-    }
+            # References
+            'json_reference': json.dumps(json_reference)
+        }
 
-    job_task_results_data_frame = pd.DataFrame(pd.Series(job_task_results)).transpose()
-    SCHEMA = [
-            # Job and Job Task Identifier 
-            bigquery.SchemaField("job_id", "INT64", mode = "REQUIRED"),
-            bigquery.SchemaField("job_task_id", "INT64", mode = "REQUIRED"),
+        job_task_results_data_frame = pd.DataFrame(pd.Series(job_task_results)).transpose()
+        SCHEMA = [
+                # Job and Job Task Identifier 
+                bigquery.SchemaField("job_id", "INT64", mode = "REQUIRED"),
+                bigquery.SchemaField("job_task_id", "INT64", mode = "REQUIRED"),
 
-            # # Update Fields
-            bigquery.SchemaField("ts_end", "STRING", mode = "NULLABLE"),
-            bigquery.SchemaField("result_code", "INT64", mode = "NULLABLE"),
-            bigquery.SchemaField("result_message", "STRING", mode = "NULLABLE"),
-            bigquery.SchemaField("affected_rows", "INT64", mode = "NULLABLE"),
-            bigquery.SchemaField("etl_task_status_id", "INT64", mode = "NULLABLE"),
+                # # Update Fields
+                bigquery.SchemaField("ts_end", "STRING", mode = "NULLABLE"),
+                bigquery.SchemaField("result_code", "INT64", mode = "NULLABLE"),
+                bigquery.SchemaField("result_message", "STRING", mode = "NULLABLE"),
+                bigquery.SchemaField("affected_rows", "INT64", mode = "NULLABLE"),
+                bigquery.SchemaField("etl_task_status_id", "INT64", mode = "NULLABLE"),
 
-            # # References
-            bigquery.SchemaField("json_reference", "STRING", mode = "NULLABLE")
-        ]
+                # # References
+                bigquery.SchemaField("json_reference", "STRING", mode = "NULLABLE")
+            ]
 
-    results = upload_df_to_gbq_table(
-        job_task_results_data_frame, 
-        client, 
-        dataset_id = 'etl',
-        table_id = 'job_task_record_updates',
-        schema = SCHEMA)
+        results = upload_df_to_gbq_table(
+            job_task_results_data_frame, 
+            client, 
+            dataset_id = 'etl',
+            table_id = 'job_task_record_updates',
+            schema = SCHEMA)
 
-    if results.result_code != 0 :
-        print(3)
-        pprint.pprint(results.__dict__)
+        if results.result_code != 0 :
+            raise update_job_task_record_error(results.error)
+
+        # Perform a query to update the corresponding job/job_task row in the job_task_record table
+        QUERY = ("""
+            UPDATE `ubermediadata.etl.job_task_record` AS t
+            SET 
+                t.ts_end = s.ts_end,
+                -- t.duration_message = s.duration_message,
+                t.result_code = s.result_code,
+                t.result_message = s.result_message,
+                t.affected_rows = s.affected_rows,
+                t.etl_task_status_id = s.etl_task_status_id,
+                t.json_reference = s.json_reference
+                
+            FROM `ubermediadata.etl.job_task_record_updates` AS s
+            WHERE t.job_id = s.job_id 
+            AND t.job_task_id = s.job_task_id
+            AND s.job_id = {} AND s.job_task_id = {}
+        """.format(job_id, job_task_id))
+
+        job = client.query(QUERY)
         
-        raise Exception("An error occurred while uploading the updated job task record to gbq")
+        try:
+            result = job.result() # Raises an exception if there is something wrong with the query
+        except Exception as e:
+            raise update_job_task_record_error(e)
 
+        print("job task successfully updated")
+
+    except update_job_task_record_error as e:
+        with open("{}_{}_update_job_task_record_error.txt".format(job_id, job_task_id), 'w') as file:
+            # If job task fails to update, write to a .txt file 
+            file.write(e.result_message)
     
-
-    # Perform a query to update the corresponding job/job_task row in the job_task_record table
-    QUERY = ("""
-        UPDATE `ubermediadata.etl.job_task_record` AS t
-        SET 
-            t.ts_end = s.ts_end,
-            -- t.duration_message = s.duration_message,
-            t.result_code = s.result_code,
-            t.result_message = s.result_message,
-            t.affected_rows = s.affected_rows,
-            t.etl_task_status_id = s.etl_task_status_id,
-            t.json_reference = s.json_reference
-            
-        FROM `ubermediadata.etl.job_task_record_updates` AS s
-        WHERE t.job_id = s.job_id 
-        AND t.job_task_id = s.job_task_id
-        AND s.job_id = {} AND s.job_task_id = {}
-    """.format(job_id, job_task_id))
-
-    job = client.query(QUERY)
-    result = job.result() # Raises an exception if there is something wrong with the query
-
+    
     # return job_task_results
     return results 
 
@@ -152,13 +188,17 @@ def wrapped_job_task(
     **kwargs):
     # Create Task
     ts_start = str(datetime.datetime.now())
-    task_start = add_job_task_record(
-        job_id = _job_id, 
-        job_task_id = _job_task_id, 
-        job_task_description = _job_task_description,  
-        source_reference = _source_reference,
-        client = _client,
-        ts_start = str(datetime.datetime.now()))
+    try:
+        task_start = add_job_task_record(
+            job_id = _job_id, 
+            job_task_id = _job_task_id, 
+            job_task_description = _job_task_description,  
+            source_reference = _source_reference,
+            client = _client,
+            ts_start = str(datetime.datetime.now()))
+    except add_job_task_record_error as e:
+        print(e.result_message)
+        return e
 
     # Perform Task
     result = function(**kwargs)
@@ -169,12 +209,21 @@ def wrapped_job_task(
 
     # End the clock and update job task record with results
     ts_end = str(datetime.datetime.now())
-    task_end = update_job_task_record(
-        job_id = _job_id, 
-        job_task_id = _job_task_id, 
-        ts_end = ts_end, 
-        client = _client, 
-        **etl_task_results)
+
+    try:
+        task_end = update_job_task_record(
+            job_id = _job_id, 
+            job_task_id = _job_task_id, 
+            ts_end = ts_end, 
+            client = _client, 
+            **etl_task_results)
+    except update_job_task_record_error as e:
+        print(e.result_message)
+        return e
+    
+    # Raise an exception if task fails to update
+    if task_end.result_code != 0:
+        raise Exception("Failed to update job task")
 
     pprint.pprint(etl_task_results)
     return result 
