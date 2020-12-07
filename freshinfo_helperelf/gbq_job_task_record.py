@@ -7,7 +7,7 @@ import pandas as pd
 from google.cloud import bigquery
 
 from freshinfo_helperelf import dbutils
-from freshinfo_helperelf.gbq.gbq_dbutils import upload_df_to_gbq_table
+from freshinfo_helperelf.gbq_dbutils import upload_df_to_gbq_table
 
 def add_job_task_record(
     job_id, 
