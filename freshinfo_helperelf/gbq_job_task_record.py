@@ -105,7 +105,7 @@ def update_job_task_record(
         job_task_results_data_frame, 
         client, 
         dataset_id = 'etl',
-        table_id = 'job_task_record',
+        table_id = 'job_task_record_updates',
         schema = SCHEMA)
 
     if results.result_code != 0 :
