@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='freshinfo_helperelf',
-    version='0.0.6',
+    version='0.0.7',
     description='Fresh Info Helper Functions',
     url='git@github.com:fresh-info-kallen/freshinfo_helperelf.git',
     author='Kallen Chan',
