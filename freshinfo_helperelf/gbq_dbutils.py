@@ -1,5 +1,6 @@
 import datetime as datetime 
 import os 
+import json
 
 from google.cloud import bigquery
 from freshinfo_helperelf import dbutils
@@ -132,3 +133,20 @@ def create_datset(client, dataset_name):
     dataset = client.create_dataset(dataset, timeout=30)  # Make an API request.
     print("Created dataset {}.{}".format(client.project, dataset.dataset_id))
     
+
+def get_bigquery_schemafields_from_json(path_to_json):
+    with open(path_to_json) as f:
+        dtypes = json.load(f)
+
+    names = [field.get('column_name') for field in dtypes]
+    field_types = [field.get('data_type') for field in dtypes]
+    modes = [field.get('is_nullable') for field in dtypes]
+    schema = [
+        bigquery.SchemaField(
+            name = name, 
+            field_type = field_type,
+            mode = "NULLABLE" if mode == 'YES' else "REQUIRED"
+            )
+        for name, field_type, mode in zip(names, field_types, modes)
+    ]
+    return schema 
